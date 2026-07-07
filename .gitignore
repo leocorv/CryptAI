@@ -1,0 +1,17 @@
+.env
+data/
+training/checkpoints/
+training/datasets/
+arena/champions/
+live/champions/
+__pycache__/
+*.pyc
+*.log
+*.pth
+*.csv
+*.json
+.DS_Store
+.venv/
+venv/
+__pycache__/
+*.pyc
