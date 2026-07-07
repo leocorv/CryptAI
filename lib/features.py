@@ -144,3 +144,19 @@ def normalize(features, fit=None):
     for c in features.columns:
         n[c] = (features[c] - fit[c]["m"]) / (fit[c]["s"] + 1e-8)
     return n, fit
+def fear_greed_feature(df, fng_value=27.0):
+    """Add Fear & Greed Index as a feature column"""
+    f = pd.DataFrame(index=df.index)
+    f["fear_greed_index"] = fng_value
+    f["fear_greed_regime"] = 0  # 0=Fear, 1=Neutral, 2=Greed
+    if fng_value < 25:
+        f["fear_greed_regime"] = 0  # Extreme Fear
+    elif fng_value < 45:
+        f["fear_greed_regime"] = 1  # Fear
+    elif fng_value < 55:
+        f["fear_greed_regime"] = 2  # Neutral
+    elif fng_value < 75:
+        f["fear_greed_regime"] = 3  # Greed
+    else:
+        f["fear_greed_regime"] = 4  # Extreme Greed
+    return f

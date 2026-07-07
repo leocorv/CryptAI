@@ -36,9 +36,9 @@ def regression_channels(price, window=50, n_std=2.5):
 def onchain_metrics(price, volume):
     """Approximation on-chain. Données Glassnode idéales, sinon approximate avec volume"""
     f = pd.DataFrame(index=price.index)
-    f["issuance_approx"] = volume.rolling(144).mean()  # proxy issuance
-    f["tradable_supply_ratio"] = volume / volume.rolling(30*144).mean()
-    f["rcap_pow_approx"] = np.sqrt((price * volume.rolling(144).mean()))  # geometric mean proxy
+    f["issuance_approx"] = volume.rolling(min(144, len(volume))).mean()  # proxy issuance
+    f["tradable_supply_ratio"] = volume / volume.rolling(min(144, len(volume))).mean()
+    f["rcap_pow_approx"] = np.sqrt((price * volume.rolling(min(144, len(volume))).mean()))  # geometric mean proxy
     return f
 
 # ─── Skill 3: Macro Liquidity ───
@@ -144,3 +144,19 @@ def normalize(features, fit=None):
     for c in features.columns:
         n[c] = (features[c] - fit[c]["m"]) / (fit[c]["s"] + 1e-8)
     return n, fit
+def fear_greed_feature(df, fng_value=27.0):
+    """Add Fear & Greed Index as a feature column"""
+    f = pd.DataFrame(index=df.index)
+    f["fear_greed_index"] = fng_value
+    f["fear_greed_regime"] = 0  # 0=Fear, 1=Neutral, 2=Greed
+    if fng_value < 25:
+        f["fear_greed_regime"] = 0  # Extreme Fear
+    elif fng_value < 45:
+        f["fear_greed_regime"] = 1  # Fear
+    elif fng_value < 55:
+        f["fear_greed_regime"] = 2  # Neutral
+    elif fng_value < 75:
+        f["fear_greed_regime"] = 3  # Greed
+    else:
+        f["fear_greed_regime"] = 4  # Extreme Greed
+    return f
