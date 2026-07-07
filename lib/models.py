@@ -52,7 +52,7 @@ class MLPDirection(nn.Module):
             nn.Linear(128, 3)
         )
     def forward(self, x):
-        return self.net(x.view(x.size(0), -1))
+        return self.net(x.reshape(x.size(0), -1))
 
 # ─── Ensemble Model ───
 class EnsembleDirection(nn.Module):

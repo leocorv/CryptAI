@@ -36,9 +36,9 @@ def regression_channels(price, window=50, n_std=2.5):
 def onchain_metrics(price, volume):
     """Approximation on-chain. Données Glassnode idéales, sinon approximate avec volume"""
     f = pd.DataFrame(index=price.index)
-    f["issuance_approx"] = volume.rolling(144).mean()  # proxy issuance
-    f["tradable_supply_ratio"] = volume / volume.rolling(30*144).mean()
-    f["rcap_pow_approx"] = np.sqrt((price * volume.rolling(144).mean()))  # geometric mean proxy
+    f["issuance_approx"] = volume.rolling(min(144, len(volume))).mean()  # proxy issuance
+    f["tradable_supply_ratio"] = volume / volume.rolling(min(144, len(volume))).mean()
+    f["rcap_pow_approx"] = np.sqrt((price * volume.rolling(min(144, len(volume))).mean()))  # geometric mean proxy
     return f
 
 # ─── Skill 3: Macro Liquidity ───
