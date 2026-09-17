@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""CryptAI News & Sentiment Collector — MCP-style pipeline for crypto context"""
-import os, sys, json, time
-from datetime import datetime
+"""CryptAI lightweight market-context collector."""
+
+import json
+import os
+import time
+from datetime import datetime, timezone
 from pathlib import Path
+
 import requests
 
-BASE = "/mnt/hive_storage/CryptAI"
-NEWS_DIR = f"{BASE}/news"
-CACHE_FILE = f"{NEWS_DIR}/_cache.json"
+BASE = Path(os.getenv("CRYPTAI_HOME", Path(__file__).resolve().parents[1])).resolve()
+NEWS_DIR = BASE / "news"
+CACHE_FILE = NEWS_DIR / "_cache.json"
 
 SYMBOL_KEYWORDS = {
     "BTC": ["bitcoin", "btc"],
@@ -15,84 +19,90 @@ SYMBOL_KEYWORDS = {
     "SOL": ["solana", "sol"],
     "BNB": ["binance", "bnb"],
     "HYP": ["hyperliquid", "hyp", "hype"],
-    "XRP": ["xrp", "ripple"]
+    "XRP": ["xrp", "ripple"],
 }
 
-# Free crypto news APIs (no key required or free tier)
 SOURCES = [
     {
         "name": "coindesk",
         "url": "https://api.coindesk.com/v1/bpi/currentprice.json",
-        "type": "price_snapshot"
+        "type": "price_snapshot",
     },
     {
         "name": "coingecko_trending",
         "url": "https://api.coingecko.com/api/v3/search/trending",
-        "type": "trending"
+        "type": "trending",
     },
 ]
 
+
 def fetch_news():
-    """Fetch news from available free sources"""
+    """Fetch market context from configured public sources."""
+    NEWS_DIR.mkdir(parents=True, exist_ok=True)
     results = []
-    ts = datetime.utcnow().isoformat()
-    
-    for source in SOURCES:
-        try:
-            r = requests.get(source["url"], timeout=10)
-            if r.status_code == 200:
-                data = r.json()
+    ts = datetime.now(timezone.utc).isoformat()
+
+    with requests.Session() as session:
+        session.headers.update({"User-Agent": "CryptAI-experimental/1.0"})
+
+        for source in SOURCES:
+            try:
+                response = session.get(source["url"], timeout=10)
+                response.raise_for_status()
                 results.append({
                     "source": source["name"],
                     "type": source["type"],
                     "ts": ts,
-                    "data": data
+                    "data": response.json(),
                 })
                 print(f"[news] {source['name']}: OK")
-            else:
-                print(f"[news] {source['name']}: HTTP {r.status_code}")
-        except Exception as e:
-            print(f"[news] {source['name']}: {e}")
-        time.sleep(1)
-    
-    # Save
-    date_str = datetime.utcnow().strftime('%Y%m%d_%H')
-    outpath = f"{NEWS_DIR}/{date_str}.json"
-    with open(outpath, "w") as f:
-        json.dump({"ts": ts, "articles": results}, f, indent=2, default=str)
-    
+            except (requests.RequestException, ValueError) as exc:
+                print(f"[news] {source['name']}: {exc}")
+            time.sleep(1)
+
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H")
+    outpath = NEWS_DIR / f"{date_str}.json"
+    with outpath.open("w", encoding="utf-8") as handle:
+        json.dump({"ts": ts, "articles": results}, handle, indent=2, default=str)
+
     return results
+
 
 def query_news_for_symbol(symbol, since_hours=24):
-    """Find news context for a symbol in recent cache"""
+    """Find recent cached context that mentions a tracked symbol."""
+    if not NEWS_DIR.exists():
+        return []
+
     results = []
     cutoff = time.time() - since_hours * 3600
-    keywords = SYMBOL_KEYWORDS.get(symbol, [symbol.lower()])
-    
-    for f in sorted(Path(NEWS_DIR).glob("*.json")):
-        if f.name == "_cache.json":
+    keywords = SYMBOL_KEYWORDS.get(symbol.upper(), [symbol.lower()])
+
+    for file_path in sorted(NEWS_DIR.glob("*.json")):
+        if file_path == CACHE_FILE or file_path.stat().st_mtime < cutoff:
             continue
-        if f.stat().st_mtime < cutoff:
-            continue
+
         try:
-            with open(f) as fh:
-                data = json.load(fh)
-        except:
+            with file_path.open(encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError):
             continue
-        
+
         for article in data.get("articles", []):
             text = json.dumps(article).lower()
-            if any(kw in text for kw in keywords):
+            if any(keyword in text for keyword in keywords):
                 results.append(article)
-    
+
     return results
 
+
 def check_abnormal_move(current_price, previous_price, threshold_pct=2.0):
-    """Detect if a price move is abnormal"""
+    """Return (is_abnormal, absolute_change_pct)."""
     if previous_price == 0:
-        return False
+        return False, 0.0
+
     change = abs((current_price - previous_price) / previous_price) * 100
     return change >= threshold_pct, change
+
 
 if __name__ == "__main__":
     print("[news] Fetching crypto context...")
