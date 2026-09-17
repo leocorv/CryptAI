@@ -1,72 +1,117 @@
 #!/usr/bin/env python3
-"""CryptAI Symbol Manager — add/remove tracking with audit log"""
-import os, sys, json
-from datetime import datetime
+"""CryptAI symbol manager with a small JSON audit trail."""
 
-BASE = "/mnt/hive_storage/CryptAI"
-CONFIG_FILE = f"{BASE}/config/symbols.json"
-LOG_FILE = f"{BASE}/config/symbols.log"
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
-BASE_SYMBOLS = {"BTC", "ETH", "SOL", "BNB", "HYP", "XRP"}
+BASE = Path(os.getenv("CRYPTAI_HOME", Path(__file__).resolve().parents[1])).resolve()
+CONFIG_FILE = BASE / "config" / "symbols.json"
+LOG_FILE = BASE / "config" / "symbols.log"
+
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
 
 def load():
-    with open(CONFIG_FILE) as f:
-        return json.load(f)
+    if not CONFIG_FILE.exists():
+        raise FileNotFoundError(f"Missing symbol config: {CONFIG_FILE}")
+    with CONFIG_FILE.open(encoding="utf-8") as handle:
+        cfg = json.load(handle)
+
+    cfg.setdefault("base", [])
+    cfg.setdefault("added", [])
+    cfg.setdefault("removed", [])
+    return cfg
+
 
 def save(cfg):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with CONFIG_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(cfg, handle, indent=2)
+
 
 def log(action, symbol, reason):
-    entry = json.dumps({"ts": datetime.utcnow().isoformat(), "action": action,
-                        "symbol": symbol, "reason": reason})
-    with open(LOG_FILE, "a") as f:
-        f.write(entry + "\n")
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    entry = json.dumps({"ts": now_iso(), "action": action, "symbol": symbol, "reason": reason})
+    with LOG_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(entry + "\n")
     print(f"[symbols] {action}: {symbol} — {reason}")
+
 
 def add_symbol(symbol, reason=""):
     cfg = load()
-    sym = symbol.upper()
+    sym = symbol.strip().upper()
+    if not sym:
+        raise ValueError("symbol cannot be empty")
     if sym in cfg["base"]:
-        log("BLOCKED", sym, "symbol de base — suppression interdite")
+        log("SKIP", sym, "already part of the base symbol set")
         return False
     if sym in cfg["added"]:
-        log("SKIP", sym, "déjà ajouté")
+        log("SKIP", sym, "already added")
         return False
+
     cfg["added"].append(sym)
     save(cfg)
     log("ADD", sym, reason)
     return True
 
+
 def remove_symbol(symbol, reason=""):
     cfg = load()
-    sym = symbol.upper()
+    sym = symbol.strip().upper()
+    if not sym:
+        raise ValueError("symbol cannot be empty")
     if sym in cfg["base"]:
-        log("BLOCKED", sym, "symbol de base — suppression interdite")
+        log("BLOCKED", sym, "base symbols cannot be removed")
         return False
     if sym not in cfg["added"]:
-        log("SKIP", sym, "pas dans la liste des ajoutés")
+        log("SKIP", sym, "not present in the added symbol set")
         return False
+
     cfg["added"].remove(sym)
-    cfg["removed"].append({"symbol": sym, "ts": datetime.utcnow().isoformat(), "reason": reason})
+    cfg["removed"].append({"symbol": sym, "ts": now_iso(), "reason": reason})
     save(cfg)
     log("REMOVE", sym, reason)
     return True
+
 
 def get_all_symbols():
     cfg = load()
     return cfg["base"] + cfg["added"]
 
-if __name__ == "__main__":
-    action = sys.argv[1] if len(sys.argv) > 1 else "list"
+
+def print_usage():
+    print("Usage: symbol_manager.py [list | add SYMBOL [reason...] | remove SYMBOL [reason...]]")
+
+
+def main():
+    action = sys.argv[1].lower() if len(sys.argv) > 1 else "list"
+
     if action == "list":
         cfg = load()
         print(f"Base: {cfg['base']}")
         print(f"Added: {cfg['added']}")
         print(f"Removed: {cfg['removed']}")
-    elif action == "add" and len(sys.argv) >= 3:
-        reason = " ".join(sys.argv[3:]) if len(sys.argv) > 3 else "manual add"
-        add_symbol(sys.argv[2], reason)
-    elif action == "remove" and len(sys.argv) >= 3:
-        reason = " ".join(sys.argv[3:]) if len(sys.argv) > 3 else "manual remove"
-        remove_symbol(sys.argv[2], reason)
+        return
+
+    if action in {"add", "remove"}:
+        if len(sys.argv) < 3:
+            print_usage()
+            raise SystemExit(2)
+        reason = " ".join(sys.argv[3:]) if len(sys.argv) > 3 else f"manual {action}"
+        if action == "add":
+            add_symbol(sys.argv[2], reason)
+        else:
+            remove_symbol(sys.argv[2], reason)
+        return
+
+    print_usage()
+    raise SystemExit(2)
+
+
+if __name__ == "__main__":
+    main()
