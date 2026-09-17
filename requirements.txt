@@ -1,0 +1,6 @@
+ccxt
+numpy
+pandas
+python-dotenv
+requests
+torch
