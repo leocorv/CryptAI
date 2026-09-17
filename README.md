@@ -105,11 +105,9 @@ A local `.env` can be created from `.env.example`.
 ```env
 BINANCE_API_KEY=your_binance_api_key
 BINANCE_SECRET=your_binance_secret_key
-GITHUB_TOKEN=your_github_token
-DISCORD_WEBHOOK=your_discord_webhook_url
 ```
 
-The Binance collector only uses public OHLCV endpoints, so Binance credentials are optional for the current collection workflow.
+The Binance collector only uses public OHLCV endpoints, so these credentials are optional for the current collection workflow.
 
 The real `.env` file is ignored by Git. Do not commit API keys, exchange secrets, wallet keys or webhooks.
 
@@ -143,7 +141,7 @@ The current training pipeline:
 
 - builds engineered features from the latest local datasets;
 - aligns labels to the post-window feature index;
-- uses per-market chronological train/validation splits;
+- uses chronological train/validation data per market;
 - fits normalization parameters using training data only;
 - selects CUDA automatically when available;
 - stores generated checkpoints under `arena/champions/`.
@@ -163,13 +161,13 @@ The arena module was built to evaluate candidate strategies with more realistic 
 It can account for:
 
 - trading fees;
-- slippage;
+- entry and exit slippage;
 - position sizing;
 - maximum drawdown;
 - win rate;
 - profit factor;
 - Sharpe-style metrics;
-- equity evolution.
+- mark-to-market equity evolution.
 
 The thresholds committed in `config/` are experimental values, not investment recommendations or validated risk settings.
 
@@ -203,6 +201,7 @@ The repository intentionally ignores runtime and training artifacts such as:
 
 - `.env`
 - datasets
+- news/cache output
 - checkpoints
 - generated champions
 - CSV files
