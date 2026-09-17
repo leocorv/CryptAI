@@ -22,28 +22,37 @@ SYMBOL_KEYWORDS = {
     "XRP": ["xrp", "ripple"],
 }
 
+# Low-volume, keyless CoinGecko public API endpoints used only as experimental
+# market context. They are intentionally not treated as a production news feed.
 SOURCES = [
-    {
-        "name": "coindesk",
-        "url": "https://api.coindesk.com/v1/bpi/currentprice.json",
-        "type": "price_snapshot",
-    },
     {
         "name": "coingecko_trending",
         "url": "https://api.coingecko.com/api/v3/search/trending",
         "type": "trending",
     },
+    {
+        "name": "coingecko_price_snapshot",
+        "url": (
+            "https://api.coingecko.com/api/v3/simple/price"
+            "?ids=bitcoin,ethereum,solana,binancecoin,ripple"
+            "&vs_currencies=usd&include_24hr_change=true"
+        ),
+        "type": "price_snapshot",
+    },
 ]
 
 
 def fetch_news():
-    """Fetch market context from configured public sources."""
+    """Fetch experimental market context from configured public sources."""
     NEWS_DIR.mkdir(parents=True, exist_ok=True)
     results = []
     ts = datetime.now(timezone.utc).isoformat()
 
     with requests.Session() as session:
-        session.headers.update({"User-Agent": "CryptAI-experimental/1.0"})
+        session.headers.update({
+            "User-Agent": "CryptAI-experimental/1.0",
+            "Accept": "application/json",
+        })
 
         for source in SOURCES:
             try:
@@ -55,15 +64,15 @@ def fetch_news():
                     "ts": ts,
                     "data": response.json(),
                 })
-                print(f"[news] {source['name']}: OK")
+                print(f"[context] {source['name']}: OK")
             except (requests.RequestException, ValueError) as exc:
-                print(f"[news] {source['name']}: {exc}")
+                print(f"[context] {source['name']}: {exc}")
             time.sleep(1)
 
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H")
     outpath = NEWS_DIR / f"{date_str}.json"
     with outpath.open("w", encoding="utf-8") as handle:
-        json.dump({"ts": ts, "articles": results}, handle, indent=2, default=str)
+        json.dump({"ts": ts, "items": results}, handle, indent=2, default=str)
 
     return results
 
@@ -87,10 +96,12 @@ def query_news_for_symbol(symbol, since_hours=24):
         except (OSError, json.JSONDecodeError):
             continue
 
-        for article in data.get("articles", []):
-            text = json.dumps(article).lower()
+        # Support both the cleaned-up "items" key and older cache snapshots.
+        cached_items = data.get("items", data.get("articles", []))
+        for item in cached_items:
+            text = json.dumps(item).lower()
             if any(keyword in text for keyword in keywords):
-                results.append(article)
+                results.append(item)
 
     return results
 
@@ -105,6 +116,6 @@ def check_abnormal_move(current_price, previous_price, threshold_pct=2.0):
 
 
 if __name__ == "__main__":
-    print("[news] Fetching crypto context...")
-    articles = fetch_news()
-    print(f"[news] {len(articles)} sources polled")
+    print("[context] Fetching crypto market context...")
+    items = fetch_news()
+    print(f"[context] {len(items)} sources polled")
