@@ -1,17 +1,27 @@
+# Local environment / secrets
 .env
+.env.*
+!.env.example
+
+# Generated market and research data
 data/
+news/
 training/checkpoints/
 training/datasets/
 arena/champions/
 live/champions/
+
+# Python
 __pycache__/
 *.pyc
-*.log
-*.pth
-*.csv
-*.json
-.DS_Store
 .venv/
 venv/
-__pycache__/
-*.pyc
+
+# Generated model/data artifacts
+*.log
+*.pth
+*.pt
+*.csv
+
+# OS
+.DS_Store
