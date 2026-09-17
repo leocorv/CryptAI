@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Compatibility entrypoint for the CryptAI training runner."""
+"""Compatibility module for ``scripts.train``."""
 
-import runpy
+import sys
 from pathlib import Path
 
-RUNNER = Path(__file__).resolve().parents[1] / "scripts" / "train.py"
-runpy.run_path(str(RUNNER), run_name="__main__")
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.train import *  # noqa: F401,F403
+
+
+if __name__ == "__main__":
+    train_champion()
