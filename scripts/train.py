@@ -128,10 +128,18 @@ def evaluate(model, x_values, y_values, batch_size, device, criterion):
 
 
 def train_champion(model_type="lstm", seq_len=96, hidden_dim=128, batch_size=64,
-                   epochs=50, lr=1e-3):
+                   epochs=50, lr=1e-3, seed=42):
+    if seq_len <= 0 or batch_size <= 0 or epochs <= 0:
+        raise ValueError("seq_len, batch_size and epochs must be positive")
+
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[train] Base: {BASE}")
-    print(f"[train] Device: {device} | Model: {model_type} | Epochs: {epochs}")
+    print(f"[train] Device: {device} | Model: {model_type} | Epochs: {epochs} | Seed: {seed}")
 
     data = load_latest_data()
     train_x_parts, train_y_parts = [], []
@@ -159,17 +167,28 @@ def train_champion(model_type="lstm", seq_len=96, hidden_dim=128, batch_size=64,
             print(f"  {key}: skipped, not enough sequences")
             continue
 
-        # Time-series split per symbol/timeframe. Randomly splitting overlapping
-        # sequences would leak almost-identical future context into validation.
+        # Chronological split with a purge gap so validation windows do not reuse
+        # observations already present in the final training sequences.
         split = max(1, min(len(x_values) - 1, int(len(x_values) * 0.8)))
+        val_start = split + seq_len
+        if val_start >= len(x_values):
+            print(f"  {key}: skipped, not enough sequences after validation purge gap")
+            continue
+
         train_x_parts.append(x_values[:split])
         train_y_parts.append(y_values[:split])
-        val_x_parts.append(x_values[split:])
-        val_y_parts.append(y_values[split:])
-        print(f"  {key}: {len(x_values)} sequences ({split} train / {len(x_values) - split} val)")
+        val_x_parts.append(x_values[val_start:])
+        val_y_parts.append(y_values[val_start:])
+        print(
+            f"  {key}: {len(x_values)} sequences "
+            f"({split} train / {seq_len} gap / {len(x_values) - val_start} val)"
+        )
 
     if not train_x_parts or not val_x_parts:
-        raise RuntimeError("No dataset produced enough sequences for both training and validation.")
+        raise RuntimeError(
+            "No dataset produced enough sequences for training, purge gap and validation. "
+            "Collect more history or reduce seq_len."
+        )
 
     train_x = np.concatenate(train_x_parts)
     train_y = np.concatenate(train_y_parts)
@@ -189,7 +208,7 @@ def train_champion(model_type="lstm", seq_len=96, hidden_dim=128, batch_size=64,
 
     model.train()
     t0 = time.time()
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
 
     for epoch in range(epochs):
         order = rng.permutation(len(train_x))
@@ -227,6 +246,7 @@ def train_champion(model_type="lstm", seq_len=96, hidden_dim=128, batch_size=64,
         "batch_size": batch_size,
         "epochs": epochs,
         "lr": lr,
+        "seed": seed,
         "input_dim": input_dim,
     }
     champion_id = generate_champion_id(config)
